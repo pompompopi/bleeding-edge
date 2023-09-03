@@ -1,0 +1,11 @@
+version: '3'
+
+services:
+  bleeding_edge:
+    build: .
+    ports:
+      - 25565:25565/tcp
+    volumes:
+      - ./run/:/home/user/run
+    restart: unless-stopped
+    stdin_open: true
