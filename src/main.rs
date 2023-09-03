@@ -21,7 +21,7 @@ mod launch;
 async fn launch_version(working_dir: &Path, version: &Version) -> anyhow::Result<Arc<AtomicBool>> {
     let stop_signal = Arc::new(AtomicBool::new(false));
     let launch_data = LaunchData {
-        use_aikar: true,
+        use_aikar: env::var("BLEEDINGEDGE_USE_AIKAR").unwrap_or_else(|_| "1".to_owned()) == "1",
         working_dir: working_dir.to_path_buf(),
         version: version.clone(),
         stop_signal: stop_signal.clone(),
