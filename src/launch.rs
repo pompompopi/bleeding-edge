@@ -84,6 +84,7 @@ impl LaunchData {
             .arg(server_jar_path)
             .arg("--nogui");
         let mut interval = tokio::time::interval(Duration::from_secs(5));
+        let mut poll_interval = tokio::time::interval(Duration::from_secs(1));
 
         loop {
             info!("Launching {:?}!", command);
@@ -95,6 +96,7 @@ impl LaunchData {
                     break;
                 }
 
+                poll_interval.tick().await;
                 if child.try_wait()?.is_some() {
                     break;
                 }
