@@ -83,6 +83,7 @@ impl LaunchData {
             .arg("-jar")
             .arg(server_jar_path)
             .arg("--nogui");
+        let mut interval = tokio::time::interval(Duration::from_secs(5));
 
         loop {
             info!("Launching {:?}!", command);
@@ -105,7 +106,7 @@ impl LaunchData {
             }
 
             info!("Waiting 5s before next launch.");
-            tokio::time::sleep(Duration::from_secs(5)).await;
+            interval.tick().await;
         }
 
         Ok(())

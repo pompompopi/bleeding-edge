@@ -59,9 +59,10 @@ async fn main() -> anyhow::Result<()> {
         .await?
         .unwrap();
     let mut current_stop_signal = launch_version(working_dir, &version).await?;
+    let mut interval = tokio::time::interval(Duration::from_secs(3600));
 
     loop {
-        tokio::time::sleep(Duration::from_secs(3600)).await;
+        interval.tick().await;
         info!("Checking latest version!");
         let latest_version = VersionManifest::fetch(&client)
             .await?
