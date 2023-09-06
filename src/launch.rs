@@ -104,7 +104,7 @@ impl LaunchData {
 
                 loop {
                     if kill_bridge_clone.load(Ordering::Acquire) {
-                        return;
+                        break;
                     }
 
                     let mut data = vec![0u8; 1024];
