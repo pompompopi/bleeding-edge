@@ -31,6 +31,9 @@ tracing-subscriber = { version = "0.3" }
 regex = { version = "1.9" }
 once_cell = { version = "1.18" }
 
+tar = { version = "0.4" }
+flate2 = { version = "1.0" }
+
 [profile.release]
 strip = true
 lto = "thin"

@@ -1,6 +1,7 @@
 use std::{
-    env,
+    io::{self, Read},
     path::PathBuf,
+    process::Stdio,
     sync::{
         atomic::{AtomicBool, Ordering},
         Arc,
@@ -9,16 +10,17 @@ use std::{
 };
 
 use reqwest::Client;
-use tokio::{fs::File, io::AsyncWriteExt, process};
+use tokio::{fs::File, io::AsyncWriteExt, process, sync::Mutex};
 use tracing::info;
 
-use crate::api::Version;
+use crate::{api::Version, environment::env_var_else};
 
 pub struct LaunchData {
     pub use_aikar: bool,
     pub working_dir: PathBuf,
     pub version: Version,
     pub stop_signal: Arc<AtomicBool>,
+    pub stopped_signal: Arc<AtomicBool>,
 }
 
 impl LaunchData {
@@ -41,10 +43,8 @@ impl LaunchData {
             .await?;
 
         let mut jvm_args = vec![
-            "-Xms".to_owned()
-                + &env::var("BLEEDINGEDGE_MIN_MEM").unwrap_or_else(|_| "1g".to_owned()),
-            "-Xmx".to_owned()
-                + &env::var("BLEEDINGEDGE_MAX_MEM").unwrap_or_else(|_| "1g".to_owned()),
+            "-Xms".to_owned() + &env_var_else("BLEEDINGEDGE_MIN_MEM", "1g"),
+            "-Xmx".to_owned() + &env_var_else("BLEEDINGEDGE_MAX_MEM", "1g"),
         ];
 
         if self.use_aikar {
@@ -82,28 +82,78 @@ impl LaunchData {
             .args(&jvm_args)
             .arg("-jar")
             .arg(server_jar_path)
-            .arg("--nogui");
+            .arg("--nogui")
+            .stdin(Stdio::piped());
+
         let mut interval = tokio::time::interval(Duration::from_secs(5));
         let mut poll_interval = tokio::time::interval(Duration::from_secs(1));
+        let mut is_killing = false;
+        let mut attempt_count = 0;
 
         loop {
             info!("Launching {:?}!", command);
             let mut child = command.spawn()?;
+            let kill_bridge = Arc::new(AtomicBool::new(false));
+            let stdin = Arc::new(Mutex::new(child.stdin.take().unwrap()));
+
+            let kill_bridge_clone = kill_bridge.clone();
+            let stdin_clone = stdin.clone();
+
+            tokio::spawn(async move {
+                let mut self_stdin = io::stdin();
+
+                loop {
+                    if kill_bridge_clone.load(Ordering::Acquire) {
+                        return;
+                    }
+
+                    let mut data = vec![0u8; 1024];
+                    let read = self_stdin.read(&mut data);
+
+                    if let Ok(read_bytes) = read {
+                        if read_bytes < 1 {
+                            continue;
+                        }
+
+                        if let Err(_) = stdin_clone.lock().await.write(&data[..read_bytes]).await {
+                            break;
+                        }
+                    } else {
+                        break;
+                    }
+                }
+            });
 
             loop {
-                if self.stop_signal.load(Ordering::Acquire) {
-                    child.start_kill()?;
+                poll_interval.tick().await;
+
+                if child.try_wait()?.is_some() {
+                    kill_bridge.store(true, Ordering::Release);
+                    self.stopped_signal.store(true, Ordering::Release);
                     break;
                 }
 
-                poll_interval.tick().await;
-                if child.try_wait()?.is_some() {
-                    break;
+                if self.stop_signal.load(Ordering::Acquire) && !is_killing {
+                    is_killing = true;
+                }
+
+                if is_killing {
+                    attempt_count += 1;
+
+                    // Give the server a maximum of 3 minutes to save world data
+                    if attempt_count > 180 {
+                        let _ = child.kill().await;
+                    } else {
+                        let mut stdin_lock = stdin.lock().await;
+                        stdin_lock.write("stop\n".as_bytes()).await?;
+                        stdin_lock.flush().await?;
+                    }
+
+                    continue;
                 }
             }
 
             if self.stop_signal.load(Ordering::Acquire) {
-                child.start_kill()?;
                 break;
             }
 
