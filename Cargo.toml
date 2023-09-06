@@ -28,6 +28,9 @@ sha1_smol = { version = "1.0", features = ["std"] }
 tracing = { version = "0.1" }
 tracing-subscriber = { version = "0.3" }
 
+regex = { version = "1.9" }
+once_cell = { version = "1.18" }
+
 [profile.release]
 strip = true
 lto = "thin"

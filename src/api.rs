@@ -1,5 +1,7 @@
 use std::path::Path;
 
+use once_cell::sync::Lazy;
+use regex::Regex;
 use reqwest::Client;
 use serde::{Deserialize, Serialize};
 
@@ -37,20 +39,15 @@ impl VersionManifest {
             .await?)
     }
 
-    async fn search(&self, query: &str) -> anyhow::Result<Option<Version>> {
+    pub async fn absolute_latest(&self) -> anyhow::Result<Option<Version>> {
+        static REGEX: Lazy<Regex> = Lazy::new(|| {
+            Regex::new(r"((1\.\d+(\.\d{1,2})?(-(rc|pre)\d{1,2})?)|\d\dw\d\d[a-z])").unwrap()
+        });
         Ok(self
             .versions
             .iter()
-            .find(|v| v.id == query)
+            .find(|v| REGEX.is_match(&v.id))
             .map(|v| v.clone()))
-    }
-
-    pub async fn absolute_latest(&self) -> anyhow::Result<Option<Version>> {
-        if self.latest.snapshot == self.latest.release {
-            return Ok(self.search(&self.latest.release).await?);
-        }
-
-        Ok(self.search(&self.latest.snapshot).await?)
     }
 }
 
