@@ -7,7 +7,6 @@ USER builder:builder
 WORKDIR /home/builder/app/
 RUN rustup-init --profile default --target x86_64-unknown-linux-musl --default-toolchain nightly -y
 ADD --chown=builder:builder . /home/builder/app/
-RUN rm -rf target/
 RUN env PATH=$PATH:/home/builder/.cargo/bin/ cargo build --release
 
 FROM eclipse-temurin:20-alpine
