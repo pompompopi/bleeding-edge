@@ -4,7 +4,7 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
-tokio = { version = "1.32", features = [
+tokio = { version = "1.35", features = [
     "rt-multi-thread",
     "rt",
     "parking_lot",
@@ -28,8 +28,8 @@ sha1_smol = { version = "1.0", features = ["std"] }
 tracing = { version = "0.1" }
 tracing-subscriber = { version = "0.3" }
 
-regex = { version = "1.9" }
-once_cell = { version = "1.18" }
+regex = { version = "1.10" }
+once_cell = { version = "1.19" }
 
 tar = { version = "0.4" }
 flate2 = { version = "1.0" }
