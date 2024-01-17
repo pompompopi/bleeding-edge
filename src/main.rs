@@ -7,12 +7,13 @@ use std::{
     time::{Duration, SystemTime, UNIX_EPOCH},
 };
 
+use anyhow::anyhow;
 use api::{Version, VersionManifest};
 use environment::env_var_else;
 use launch::LaunchData;
 use reqwest::Client;
 use tokio::fs;
-use tracing::{error, info, Level};
+use tracing::{error, info, warn, Level};
 
 mod api;
 mod archive;
@@ -70,7 +71,7 @@ async fn main() -> anyhow::Result<()> {
         .await?
         .absolute_latest()
         .await?
-        .unwrap();
+        .ok_or_else(|| anyhow!("could not find absolute latest version"))?;
     let mut signals = launch_version(working_dir, &version).await?;
     let mut interval = tokio::time::interval(Duration::from_secs(3600));
     let mut stopped_signal_query_interval = tokio::time::interval(Duration::from_secs(1));
@@ -78,31 +79,39 @@ async fn main() -> anyhow::Result<()> {
     loop {
         interval.tick().await;
         info!("Checking latest version!");
-        let latest_version = VersionManifest::fetch(&client)
-            .await?
-            .absolute_latest()
-            .await?
-            .unwrap();
+        let version_manifest_res = VersionManifest::fetch(&client).await;
+        if let Err(error) = version_manifest_res {
+            warn!("Failed to fetch version manifest: {}", error);
+        } else if let Ok(version_manifest) = version_manifest_res {
+            let absolute_latest_res = version_manifest.absolute_latest().await;
+            if let Err(error) = absolute_latest_res {
+                warn!("Failed to fetch absolute latest version: {}", error);
+            } else if let Ok(latest_version_opt) = version_manifest.absolute_latest().await {
+                if let Some(latest_version) = latest_version_opt {
+                    if latest_version.id == version.id {
+                        info!("Current version and latest version ID match, skipping!");
+                        continue;
+                    }
 
-        if latest_version.id == version.id {
-            info!("Current version and latest version ID match, skipping!");
-            continue;
+                    signals.0.store(true, Ordering::Release);
+
+                    while !signals.1.load(Ordering::Acquire) {
+                        stopped_signal_query_interval.tick().await;
+                    }
+
+                    let now = SystemTime::now().duration_since(UNIX_EPOCH)?.as_millis();
+                    let mut archive_name = String::from("backup-");
+                    archive_name.push_str(&now.to_string());
+                    archive_name.push_str("-");
+                    archive_name.push_str(&version.id);
+
+                    archive::archive(working_dir, backup_dir, &archive_name)?;
+                    version = latest_version;
+                    signals = launch_version(working_dir, &version).await?;
+                } else {
+                    warn!("Could not find latest version.")
+                }
+            }
         }
-
-        signals.0.store(true, Ordering::Release);
-
-        while !signals.1.load(Ordering::Acquire) {
-            stopped_signal_query_interval.tick().await;
-        }
-
-        let now = SystemTime::now().duration_since(UNIX_EPOCH)?.as_millis();
-        let mut archive_name = String::from("backup-");
-        archive_name.push_str(&now.to_string());
-        archive_name.push_str("-");
-        archive_name.push_str(&version.id);
-
-        archive::archive(working_dir, backup_dir, &archive_name)?;
-        version = latest_version;
-        signals = launch_version(working_dir, &version).await?;
     }
 }
