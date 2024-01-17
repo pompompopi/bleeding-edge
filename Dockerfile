@@ -9,7 +9,7 @@ RUN rustup-init --profile default --target x86_64-unknown-linux-musl --default-t
 ADD --chown=builder:builder . /home/builder/app/
 RUN env PATH=$PATH:/home/builder/.cargo/bin/ cargo build --release
 
-FROM eclipse-temurin:20-alpine
+FROM eclipse-temurin:21-alpine
 RUN addgroup -S -g 1000 user
 RUN adduser -D -S -u 1000 -G user user
 
